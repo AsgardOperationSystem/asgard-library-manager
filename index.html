@@ -1,0 +1,781 @@
+<!doctype html>
+<!-- Asgard Library Manager: manage the games on an AYN Thor running Asgard OS, from a browser on the same network.
+     One file, no build step and nothing fetched from the internet: the Thor serves it at http://<thor>:8467/, and it also
+     works opened from disk. It talks to the Thor's asgard-library.py (Asgard OS SPEC.md, LIB-1 to LIB-5). GPL-2.0. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Asgard Library Manager</title>
+<style>
+:root {
+  --bg: #12121c; --panel: rgba(59, 60, 92, .55); --rim: rgba(255, 255, 255, .14); --pill: rgba(24, 26, 38, .85);
+  --text: #fff; --dim: #c9c8e0; --faint: #8d8ca8; --a: #47d1ff; --b: #8f7dff; --bad: #ff6b8b; --ok: #3ee6b0;
+  --font: Nunito, "Nunito Sans", ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: radial-gradient(1200px 700px at 15% -10%, #2c2a52 0, transparent 60%),
+  radial-gradient(900px 600px at 110% 10%, #1d3550 0, transparent 55%), var(--bg); color: var(--text); font-family: var(--font); }
+body { display: flex; flex-direction: column; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; border: 1px solid var(--rim); background: var(--pill); border-radius: 999px; padding: .45em 1.1em;
+  font-weight: 800; transition: transform .12s, box-shadow .12s; }
+button:hover { box-shadow: 0 0 0 2px var(--a) inset; }
+button:active { transform: scale(.97); }
+button.primary { background: linear-gradient(135deg, var(--a), var(--b)); border-color: transparent; color: #fff; }
+button.danger:hover { box-shadow: 0 0 0 2px var(--bad) inset; }
+button:disabled { opacity: .45; cursor: default; box-shadow: none; }
+button.small { padding: .25em .8em; font-size: .85em; }
+input[type=text], input[type=search], select { background: rgba(0, 0, 0, .35); border: 1px solid var(--rim); border-radius: 14px;
+  padding: .55em .9em; outline: none; }
+input:focus, select:focus { border-color: var(--a); }
+.hidden { display: none !important; }
+.glass { background: var(--panel); border: 1px solid var(--rim); border-radius: 22px; backdrop-filter: blur(14px); }
+.dim { color: var(--dim); } .faint { color: var(--faint); } .bad { color: var(--bad); } .ok { color: var(--ok); }
+h1, h2, h3 { margin: 0; font-weight: 900; }
+
+/* connect and pair */
+.center { flex: 1; display: grid; place-items: center; padding: 24px; }
+.card { width: min(480px, 100%); padding: 32px; }
+.card h1 { font-size: 1.7em; margin-bottom: .2em; }
+.card p { line-height: 1.45; }
+.row { display: flex; gap: 10px; align-items: center; }
+.row > input { flex: 1; }
+.logo { display: inline-grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; margin-bottom: 14px;
+  background: linear-gradient(135deg, var(--a), var(--b)); font-weight: 900; font-size: 1.4em; }
+#code { width: 100%; text-align: center; font-size: 2.4em; letter-spacing: .45em; font-weight: 900; padding: .3em .2em .3em .65em; }
+.msg { min-height: 1.4em; margin-top: 12px; }
+
+/* main */
+header { display: flex; align-items: center; gap: 16px; padding: 14px 22px; border-bottom: 1px solid var(--rim); }
+header .who { flex: 1; min-width: 0; }
+header .who b { font-size: 1.15em; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: .3em .85em; border-radius: 999px; background: var(--pill);
+  border: 1px solid var(--rim); font-size: .85em; font-weight: 700; white-space: nowrap; }
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.chip.busy .dot { background: var(--a); animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+main { flex: 1; display: grid; grid-template-columns: 270px 1fr; min-height: 0; }
+nav { overflow: auto; padding: 14px 10px 14px 14px; border-right: 1px solid var(--rim); }
+nav .sys { display: flex; justify-content: space-between; gap: 8px; width: 100%; text-align: left; border-radius: 14px;
+  padding: .55em .9em; margin: 2px 0; border: 1px solid transparent; background: none; font-weight: 700; }
+nav .sys .n { color: var(--faint); font-weight: 800; }
+nav .sys.sel { background: linear-gradient(135deg, rgba(71, 209, 255, .25), rgba(143, 125, 255, .35)); border-color: var(--rim); }
+nav .sys.empty { color: var(--faint); }
+nav .sep { margin: 12px 8px 6px; font-size: .75em; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); font-weight: 800; }
+nav label { display: flex; gap: 8px; align-items: center; margin: 8px 8px 0; font-size: .85em; color: var(--dim); }
+section#content { overflow: auto; padding: 18px 22px 120px; position: relative; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0 16px; }
+.toolbar input[type=search] { flex: 1; min-width: 180px; }
+.exts { font-size: .8em; color: var(--faint); margin-top: 4px; word-break: break-word; }
+.games { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+.game { display: grid; grid-template-columns: 74px 1fr; gap: 12px; padding: 12px; border-radius: 18px; background: rgba(0, 0, 0, .22);
+  border: 1px solid var(--rim); }
+.game .art { width: 74px; height: 98px; border-radius: 10px; background: rgba(255, 255, 255, .06); object-fit: cover;
+  display: grid; place-items: center; color: var(--faint); font-size: .7em; text-align: center; overflow: hidden; }
+.game .art img { width: 100%; height: 100%; object-fit: cover; }
+.game .t { font-weight: 900; line-height: 1.2; word-break: break-word; }
+.game .f { font-size: .8em; color: var(--faint); word-break: break-all; margin-top: 2px; }
+.game .meta { font-size: .82em; color: var(--dim); margin-top: 4px; }
+.game .desc { font-size: .82em; color: var(--dim); margin-top: 6px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden; cursor: pointer; }
+.game .desc.open { -webkit-line-clamp: unset; }
+.game .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.empty-note { padding: 40px; text-align: center; color: var(--dim); }
+.drop { border: 2px dashed var(--rim); border-radius: 22px; padding: 22px; text-align: center; color: var(--dim); margin-bottom: 16px; }
+body.dragging .drop { border-color: var(--a); color: var(--text); background: rgba(71, 209, 255, .08); }
+body.dragging::after { content: "Drop to upload"; position: fixed; inset: 0; display: grid; place-items: center; font-size: 2em;
+  font-weight: 900; background: rgba(18, 18, 28, .6); pointer-events: none; z-index: 5; }
+
+/* uploads */
+#uploads { position: fixed; right: 18px; bottom: 18px; width: min(460px, calc(100vw - 36px)); max-height: 60vh; overflow: auto;
+  padding: 14px; z-index: 4; }
+#uploads h3 { display: flex; justify-content: space-between; align-items: center; font-size: 1em; margin-bottom: 8px; }
+.up { padding: 10px 2px; border-top: 1px solid var(--rim); }
+.up .name { font-weight: 800; word-break: break-all; font-size: .9em; }
+.up .line { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: .8em; color: var(--dim); margin-top: 4px; }
+.up select { font-size: .85em; padding: .3em .6em; max-width: 220px; }
+.bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .1); margin-top: 6px; overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--a), var(--b)); transition: width .2s; }
+
+dialog { border: 1px solid var(--rim); border-radius: 22px; background: #23233a; color: var(--text); padding: 24px; max-width: 440px; }
+dialog::backdrop { background: rgba(0, 0, 0, .55); }
+dialog .row { margin-top: 18px; justify-content: flex-end; }
+@media (max-width: 760px) { main { grid-template-columns: 1fr; } nav { max-height: 34vh; border-right: 0; border-bottom: 1px solid var(--rim); } }
+</style>
+</head>
+<body>
+
+<div id="connect" class="center hidden">
+  <form class="card glass" id="connectForm">
+    <div class="logo">A</div>
+    <h1>Library Manager</h1>
+    <p class="dim">Manage the games on your Thor from this browser. On the Thor, Settings → Hardware → Network → Library Manager
+      shows its address.</p>
+    <div class="row"><input id="host" type="text" placeholder="Thor address, e.g. 192.168.1.30" autocomplete="off" spellcheck="false" required>
+      <button class="primary" id="connectBtn">Connect</button></div>
+    <div class="msg" id="connectMsg"></div>
+  </form>
+</div>
+
+<div id="pair" class="center hidden">
+  <form class="card glass" id="pairForm">
+    <div class="logo">A</div>
+    <h1>Look at your Thor</h1>
+    <p class="dim">It's showing a six-digit code. Type it here to let this browser manage its games. You have <b id="tries">3</b>
+      tries; after that the Thor shows a new code.</p>
+    <input id="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required>
+    <div class="row" style="margin-top:14px; justify-content:space-between">
+      <button type="button" id="pairCancel">Cancel</button>
+      <button class="primary" id="pairBtn">Pair</button>
+    </div>
+    <div class="msg" id="pairMsg"></div>
+  </form>
+</div>
+
+<div id="app" class="hidden" style="display:contents">
+  <header>
+    <div class="who"><b id="thorName">Thor</b> <span class="faint" id="thorInfo"></span></div>
+    <span class="chip" id="xfer" title="Downloads and scrapes on the Thor"><span class="dot"></span><span id="xferText">Idle</span></span>
+    <button class="small" id="refreshBtn" title="Read the library again">Refresh</button>
+    <button class="small" id="logoutBtn" title="This browser will need a new code from the Thor">Unpair</button>
+  </header>
+  <main>
+    <nav id="nav"></nav>
+    <section id="content"></section>
+  </main>
+  <div id="uploads" class="glass hidden">
+    <h3><span id="upTitle">Uploads</span><button class="small" id="upClear">Clear finished</button></h3>
+    <div id="upList"></div>
+  </div>
+</div>
+
+<dialog id="dlg"><h3 id="dlgTitle"></h3><p class="dim" id="dlgText"></p>
+  <input id="dlgInput" type="text" class="hidden" style="width:100%" spellcheck="false">
+  <div class="row"><button id="dlgNo">Cancel</button><button class="primary" id="dlgYes">OK</button></div></dialog>
+
+<input type="file" id="filePick" multiple class="hidden">
+<input type="file" id="folderPick" webkitdirectory class="hidden">
+
+<script>
+"use strict";
+const PORT = 8467;
+const CHUNK = 8 << 20;
+const $ = id => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (v !== undefined && v !== null && v !== false) e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false) e.append(k instanceof Node ? k : String(k));
+  return e;
+};
+const mb = n => n >= 1 << 30 ? (n / (1 << 30)).toFixed(1) + " GB" : n >= 1 << 20 ? (n / (1 << 20)).toFixed(1) + " MB"
+  : Math.max(1, Math.round(n / 1024)) + " KB";
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// --- where the Thor is, and this browser's token for it (localStorage, per address) -------------------------------------
+const state = { host: "", base: "", token: "", hello: null, systems: [], free: 0, sel: "", games: {}, showEmpty: false,
+                pairing: null, transfers: null, art: new Map() };
+const saved = () => { try { return JSON.parse(localStorage.getItem("asgard.thors") || "{}") } catch (e) { return {} } };
+function remember(host, token) {
+  const s = saved(); s[host] = { token }; localStorage.setItem("asgard.thors", JSON.stringify(s));
+  localStorage.setItem("asgard.last", host);
+}
+function forget(host) { const s = saved(); delete s[host]; localStorage.setItem("asgard.thors", JSON.stringify(s)); }
+function normHost(h) {
+  h = h.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (!h) return "";
+  if (/^\[.*\]$/.test(h) || /^[^:]+$/.test(h)) return h + ":" + PORT;   // no port given
+  return h;
+}
+
+class ApiError extends Error { constructor(status, body) { super(body.error || "HTTP " + status); this.status = status; this.body = body } }
+async function api(method, path, body, opts = {}) {
+  const headers = {};
+  if (state.token) headers.Authorization = "Bearer " + state.token;
+  if (body !== undefined && !(body instanceof Blob)) headers["Content-Type"] = "application/json";
+  let r;
+  try {
+    r = await fetch(state.base + path, { method, headers, body: body === undefined ? undefined : body instanceof Blob ? body
+                                         : JSON.stringify(body), signal: opts.signal });
+  } catch (e) {
+    if (e.name === "AbortError") throw e;
+    throw new ApiError(0, { error: "Can't reach the Thor at " + state.host + ". Is it on, and on this network?" });
+  }
+  if (opts.blob && r.ok) return r.blob();
+  const data = await r.json().catch(() => ({}));
+  if (r.status === 401 && state.token && !path.startsWith("/api/pair")) { lostPairing(); }
+  if (!r.ok) throw new ApiError(r.status, data);
+  return data;
+}
+
+function show(view) { for (const v of ["connect", "pair", "app"]) $(v).classList.toggle("hidden", v !== view); }
+
+// --- connect -------------------------------------------------------------------------------------------------------------
+async function connect(host) {
+  state.host = normHost(host);
+  state.base = "http://" + state.host;
+  if (location.protocol.startsWith("http") && location.host === state.host) state.base = "";   // served by this Thor
+  state.token = (saved()[state.host] || {}).token || "";
+  $("connectMsg").textContent = "Connecting…";
+  try {
+    state.hello = await api("GET", "/api/hello");
+    if (state.hello.app !== "asgard-library") throw new ApiError(0, { error: "That address answers, but it isn't a Thor's Library Manager." });
+  } catch (e) {
+    show("connect");
+    $("host").value = host;
+    $("connectMsg").className = "msg bad";
+    $("connectMsg").textContent = e.message;
+    return;
+  }
+  $("connectMsg").textContent = "";
+  localStorage.setItem("asgard.last", state.host);
+  if (state.hello.paired) return openApp();
+  startPairing();
+}
+
+// --- pairing (LIB-2): the Thor shows a code, three tries, then a new code and a wait ------------------------------------
+let retryTimer = null;
+async function startPairing() {
+  show("pair");
+  $("code").value = "";
+  $("pairMsg").className = "msg dim";
+  $("pairMsg").textContent = "Asking the Thor for a code…";
+  try {
+    state.pairing = await api("POST", "/api/pair", {});
+    $("tries").textContent = state.pairing.tries;
+    $("pairMsg").textContent = state.pairing.retry_in ? "" : "";
+    if (state.pairing.retry_in) waitBeforeTry(state.pairing.retry_in);
+    else $("pairMsg").textContent = "";
+    $("code").focus();
+  } catch (e) {
+    $("pairMsg").className = "msg bad";
+    $("pairMsg").textContent = e.message + (e.body && e.body.retry_in ? " (" + e.body.retry_in + " s)" : "");
+    if (e.body && e.body.retry_in) setTimeout(startPairing, e.body.retry_in * 1000);
+  }
+}
+function waitBeforeTry(secs) {
+  clearInterval(retryTimer);
+  $("pairBtn").disabled = true;
+  let left = secs;
+  const tick = () => {
+    if (left <= 0) { clearInterval(retryTimer); $("pairBtn").disabled = false; $("pairMsg").textContent = "Type the new code from the Thor."; return }
+    $("pairMsg").textContent = "Wrong code three times. The Thor shows a new one: you can try it in " + left + " s.";
+    left--;
+  };
+  tick();
+  retryTimer = setInterval(tick, 1000);
+}
+$("pairForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const code = $("code").value.replace(/\D/g, "");
+  if (code.length !== 6) { $("pairMsg").className = "msg bad"; $("pairMsg").textContent = "The code has six digits."; return }
+  $("pairBtn").disabled = true;
+  try {
+    const r = await api("POST", "/api/pair/confirm", { pairing: state.pairing && state.pairing.pairing, code,
+                                                        name: browserName() });
+    state.token = r.token;
+    remember(state.host, r.token);
+    openApp();
+  } catch (e) {
+    $("pairBtn").disabled = false;
+    $("code").value = "";
+    $("pairMsg").className = "msg bad";
+    const b = e.body || {};
+    if (b.new_code) { $("tries").textContent = b.tries; waitBeforeTry(b.retry_in || 0); return }
+    if (b.tries !== undefined) { $("tries").textContent = b.tries; $("pairMsg").textContent = "Wrong code. " + b.tries + (b.tries === 1 ? " try" : " tries") + " left."; return }
+    if (e.status === 429 && b.retry_in) { waitBeforeTry(b.retry_in); return }
+    if (e.status === 404 || e.status === 410) { $("pairMsg").textContent = e.message; setTimeout(startPairing, 1500); return }
+    $("pairMsg").textContent = e.message;
+  }
+});
+$("code").addEventListener("input", () => { $("code").value = $("code").value.replace(/\D/g, "").slice(0, 6) });
+$("pairCancel").addEventListener("click", async () => {
+  if (state.pairing) await api("POST", "/api/pair/cancel", { pairing: state.pairing.pairing }).catch(() => {});
+  state.pairing = null;
+  show("connect");
+});
+function browserName() {
+  const ua = navigator.userAgent;
+  const b = /Firefox\//.test(ua) ? "Firefox" : /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Browser";
+  const os = /Windows/.test(ua) ? "Windows" : /Mac OS/.test(ua) ? "macOS" : /Android/.test(ua) ? "Android" : /Linux/.test(ua) ? "Linux" : "";
+  return os ? b + " on " + os : b;
+}
+function lostPairing() {
+  forget(state.host);
+  state.token = "";
+  startPairing();
+}
+
+// --- the library -----------------------------------------------------------------------------------------------------------
+async function openApp() {
+  show("app");
+  $("thorName").textContent = state.hello.name || "Thor";
+  await loadSystems();
+  pollTransfers();
+}
+async function loadSystems() {
+  const r = await api("GET", "/api/systems");
+  state.systems = r.systems;
+  state.free = r.free;
+  $("thorInfo").textContent = [state.hello.version ? "Asgard " + state.hello.version : "", state.host, mb(r.free) + " free"]
+    .filter(x => x).join("  ·  ");
+  if (!state.sel || (state.sel !== "*" && !state.systems.some(s => s.name === state.sel)))
+    state.sel = (state.systems.find(s => s.count) || {}).name || "*";
+  drawNav();
+  await loadGames();
+}
+function sysByName(n) { return state.systems.find(s => s.name === n) }
+function drawNav() {
+  const nav = $("nav");
+  nav.replaceChildren();
+  nav.append(el("button", { class: "sys" + (state.sel === "*" ? " sel" : ""), onclick: () => pick("*") }, "⇪ Upload anything", ""));
+  const withGames = state.systems.filter(s => s.count), without = state.systems.filter(s => !s.count);
+  nav.append(el("div", { class: "sep" }, "Your consoles"));
+  if (!withGames.length) nav.append(el("div", { class: "faint", style: "padding:6px 10px;font-size:.85em" }, "No games yet"));
+  for (const s of withGames)
+    nav.append(el("button", { class: "sys" + (state.sel === s.name ? " sel" : ""), "data-sys": s.name, onclick: () => pick(s.name) },
+                  el("span", {}, s.fullname), el("span", { class: "n" }, s.count)));
+  nav.append(el("div", { class: "sep" }, "Every console"));
+  nav.append(el("label", {}, el("input", { type: "checkbox", checked: state.showEmpty, onchange: e => { state.showEmpty = e.target.checked; drawNav() } }),
+                "Show consoles with no games"));
+  if (state.showEmpty)
+    for (const s of without)
+      nav.append(el("button", { class: "sys empty" + (state.sel === s.name ? " sel" : ""), "data-sys": s.name, onclick: () => pick(s.name) },
+                    el("span", {}, s.fullname), el("span", { class: "n" }, "0")));
+}
+async function pick(name) { state.sel = name; drawNav(); await loadGames() }
+async function loadGames() {
+  const s = sysByName(state.sel);
+  if (s) {
+    const r = await api("GET", "/api/games?system=" + encodeURIComponent(s.name));
+    state.games[s.name] = r.games;
+  }
+  drawContent();
+}
+
+const view = { q: "", sort: "name", missing: false };
+function drawContent() {
+  const c = $("content");
+  c.replaceChildren();
+  if (state.sel === "*") return drawUploadAnything(c);
+  const s = sysByName(state.sel);
+  if (!s) return;
+  const games = state.games[s.name] || [];
+  c.append(el("h2", {}, s.fullname),
+           el("div", { class: "exts" }, games.length + (games.length === 1 ? " game" : " games") + "  ·  " +
+              mb(games.reduce((a, g) => a + g.size, 0)) + "  ·  takes " + s.extensions.join(" ")));
+  const missing = games.filter(g => !g.media.includes("covers"));
+  const tb = el("div", { class: "toolbar" },
+    el("input", { type: "search", placeholder: "Search " + s.fullname, value: view.q, oninput: e => { view.q = e.target.value; drawGames(s) } }),
+    el("select", { onchange: e => { view.sort = e.target.value; drawGames(s) } },
+       ...[["name", "By name"], ["size", "By size"], ["new", "Newest first"]].map(([v, t]) => el("option", { value: v, selected: view.sort === v }, t))),
+    el("label", { class: "dim", style: "display:flex;gap:6px;align-items:center" },
+       el("input", { type: "checkbox", checked: view.missing, onchange: e => { view.missing = e.target.checked; drawGames(s) } }), "Missing art only"),
+    el("button", { disabled: !missing.length, title: "Scrape every game here without a cover",
+                   onclick: () => scrape(s, missing.map(g => g.path)) }, "Scrape missing art (" + missing.length + ")"),
+    el("button", { class: "primary", onclick: () => $("filePick").click() }, "Upload games"),
+    el("button", { title: "A folder becomes the game's own folder (multi-disc games, a game with its files)",
+                   onclick: () => $("folderPick").click() }, "Upload a folder"));
+  c.append(tb, el("div", { class: "drop" }, "Drop games here to add them to ", el("b", {}, s.fullname), "."),
+           el("div", { class: "games", id: "games" }));
+  drawGames(s);
+}
+function drawGames(s) {
+  const box = $("games");
+  if (!box) return;
+  let games = (state.games[s.name] || []).slice();
+  const q = view.q.trim().toLowerCase();
+  if (q) games = games.filter(g => (g.name + " " + g.path + " " + (g.developer || "") + " " + (g.genre || "")).toLowerCase().includes(q));
+  if (view.missing) games = games.filter(g => !g.media.includes("covers"));
+  games.sort(view.sort === "size" ? (a, b) => b.size - a.size : view.sort === "new" ? (a, b) => b.mtime - a.mtime
+             : (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  box.replaceChildren();
+  if (!games.length) { box.append(el("div", { class: "empty-note" }, q || view.missing ? "Nothing matches." : "No games here yet. Drop some in.")); return }
+  for (const g of games) box.append(gameCard(s, g));
+}
+function gameCard(s, g) {
+  const art = el("div", { class: "art" }, g.media.includes("covers") ? "" : "No art");
+  if (g.media.includes("covers")) loadArt(s.name, g.stem, art);
+  const year = (g.releasedate || "").slice(0, 4);
+  const meta = [year, g.developer, g.genre, g.players ? g.players + " players" : ""].filter(x => x).join("  ·  ");
+  const desc = g.desc ? el("div", { class: "desc", title: "Show all", onclick: e => e.target.classList.toggle("open") }, g.desc) : null;
+  return el("div", { class: "game", "data-path": g.path }, art,
+    el("div", {}, el("div", { class: "t" }, g.name),
+       el("div", { class: "f" }, g.path + "  ·  " + mb(g.size)),
+       meta ? el("div", { class: "meta" }, meta) : null, desc,
+       el("div", { class: "acts" },
+          el("button", { class: "small", onclick: () => scrape(s, [g.path]) }, g.media.length || g.desc ? "Scrape again" : "Scrape"),
+          el("button", { class: "small", onclick: () => rename(s, g) }, "Rename"),
+          el("button", { class: "small danger", onclick: () => remove(s, g) }, "Delete"))));
+}
+async function loadArt(sys, stem, box) {
+  const key = sys + "/" + stem;
+  let url = state.art.get(key);
+  if (!url) {
+    try {
+      url = URL.createObjectURL(await api("GET", "/api/media?system=" + encodeURIComponent(sys) + "&stem=" + encodeURIComponent(stem) +
+                                          "&kind=covers", undefined, { blob: true }));
+      state.art.set(key, url);
+    } catch (e) { box.textContent = "No art"; return }
+  }
+  box.replaceChildren(el("img", { src: url, alt: "", loading: "lazy" }));
+}
+
+// --- actions ---------------------------------------------------------------------------------------------------------------
+function ask(title, text, yes, input) {
+  return new Promise(resolve => {
+    $("dlgTitle").textContent = title;
+    $("dlgText").textContent = text;
+    $("dlgYes").textContent = yes;
+    $("dlgInput").classList.toggle("hidden", input === undefined);
+    $("dlgInput").value = input || "";
+    const d = $("dlg");
+    const done = v => { d.close(); $("dlgYes").onclick = $("dlgNo").onclick = null; resolve(v) };
+    $("dlgYes").onclick = () => done(input === undefined ? true : $("dlgInput").value);
+    $("dlgNo").onclick = () => done(null);
+    d.onclose = () => resolve(null);
+    d.showModal();
+    if (input !== undefined) { $("dlgInput").focus(); $("dlgInput").select() }
+  });
+}
+async function scrape(s, paths) {
+  if (!paths.length) return;
+  try {
+    await api("POST", "/api/scrape", { system: s.name, paths });
+    toast("Scraping " + paths.length + (paths.length === 1 ? " game" : " games") + " on the Thor. Art shows here as it comes.");
+    pollTransfers(true);
+  } catch (e) { toast(e.message, true) }
+}
+async function rename(s, g) {
+  const base = g.path.split("/").pop();
+  const to = await ask("Rename", "A new file name for " + base + ". Its art and details stay with the old name until it's scraped again.",
+                       "Rename", base);
+  if (!to || to === base) return;
+  try {
+    await api("POST", "/api/rename", { system: s.name, path: g.path, to: to.trim() });
+    await loadGames();
+  } catch (e) { toast(e.message, true) }
+}
+async function remove(s, g) {
+  if (!await ask("Delete " + g.name + "?", g.path + " (" + mb(g.size) + ") is deleted from the Thor. Its saves stay.", "Delete")) return;
+  try {
+    await api("POST", "/api/delete", { system: s.name, path: g.path });
+    await loadSystems();
+  } catch (e) { toast(e.message, true) }
+}
+let toastTimer = null;
+function toast(text, bad) {
+  let t = $("toast");
+  if (!t) { t = el("div", { id: "toast", class: "glass", style: "position:fixed;left:50%;transform:translateX(-50%);bottom:20px;padding:12px 20px;z-index:6;max-width:90vw" }); document.body.append(t) }
+  t.className = "glass" + (bad ? " bad" : "");
+  t.textContent = text;
+  t.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add("hidden"), 5000);
+}
+$("refreshBtn").addEventListener("click", () => loadSystems().catch(e => toast(e.message, true)));
+$("logoutBtn").addEventListener("click", async () => {
+  if (!await ask("Unpair this browser?", "It'll need a new code from the Thor's screen to manage games again.", "Unpair")) return;
+  await api("POST", "/api/logout", {}).catch(() => {});
+  forget(state.host);
+  state.token = "";
+  show("connect");
+  $("host").value = state.host.replace(":" + PORT, "");
+});
+
+// --- transfers on the Thor (XFER-1): scrapes and downloads, followed while the page is open ------------------------------
+let xferTimer = null, lastDone = -1;
+async function pollTransfers(soon) {
+  clearTimeout(xferTimer);
+  if (!state.token) return;
+  try {
+    const t = await api("GET", "/api/transfers");
+    state.transfers = t;
+    const jobs = (t.current ? [t.current] : []).concat(t.queue || []);
+    const scrapes = jobs.filter(j => j.kind === "scrape"), n = t.scrape || {};
+    const chip = $("xfer");
+    chip.classList.toggle("busy", jobs.length > 0 && !t.paused);
+    $("xferText").textContent = t.error === "not running" ? "Transfers unavailable"
+      : t.paused ? (t.paused === "offline" ? "Paused: the Thor has no internet" : "Paused: battery low")
+      : t.current && t.current.kind === "update" ? "Downloading an Asgard update"
+      : scrapes.length ? "Scraping " + Math.min(n.done + 1, n.total) + " of " + n.total + ": " + scrapes[0].label
+      : t.holds && t.holds.length ? "Receiving uploads" : "Idle";
+    if (n.done !== lastDone) {   // art arrived: show it
+      if (lastDone >= 0) { state.art.clear(); loadGames().catch(() => {}) }
+      lastDone = n.done;
+    }
+    xferTimer = setTimeout(pollTransfers, jobs.length ? 3000 : 15000);
+  } catch (e) {
+    if (e.status !== 401) xferTimer = setTimeout(pollTransfers, 15000);
+  }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && state.token) pollTransfers() });
+
+// --- uploads (LIB-3, LIB-4) -----------------------------------------------------------------------------------------------
+// Each file goes in 8 MB chunks; the Thor keeps what arrived in a .asgard-part file, so a cut connection, or the same file
+// dropped again later, carries on from there. A file lands in its console by extension; when several consoles take it
+// (.zip, .chd, .iso), its CRC32 is looked up in the Thor's scrape index, and failing that, you pick.
+const uploads = [];
+let uploading = false;
+const scrapeAfter = () => localStorage.getItem("asgard.scrapeAfter") !== "0";
+
+function drawUploadAnything(c) {
+  c.append(el("h2", {}, "Upload anything"),
+    el("p", { class: "dim" }, "Drop game files here, or pick them. Each goes to its console by its file type. When several consoles take " +
+       "a type (.zip, .chd, .iso…), the Thor's game database tells them apart, and if it can't, you choose."),
+    el("div", { class: "toolbar" },
+       el("button", { class: "primary", onclick: () => $("filePick").click() }, "Pick games"),
+       el("button", { onclick: () => $("folderPick").click() }, "Pick a folder"),
+       el("label", { class: "dim", style: "display:flex;gap:6px;align-items:center" },
+          el("input", { type: "checkbox", checked: scrapeAfter(), onchange: e => localStorage.setItem("asgard.scrapeAfter", e.target.checked ? "1" : "0") }),
+          "Scrape art and details after each upload")),
+    el("div", { class: "drop", style: "padding:60px" }, "Drop games or folders here"),
+    el("p", { class: "faint" }, mb(state.free) + " free on the Thor."));
+}
+
+function addFiles(list, system) {
+  // list: [{file, rel}] where rel is "Folder/name" for a folder's files
+  const groups = new Map();
+  for (const it of list) {
+    const top = it.rel.includes("/") ? it.rel.split("/")[0] : null;
+    const key = top ? "dir:" + top : "file:" + it.rel + ":" + uploads.length + ":" + groups.size;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(it);
+  }
+  for (const items of groups.values()) {
+    // a folder's files share one console, decided by the folder's game files
+    const shared = { system: system || "", choices: null, state: system ? "ready" : "routing" };
+    for (const it of items)
+      uploads.push({ file: it.file, rel: it.rel, group: shared, sent: 0, status: "", error: "", xhr: null, done: false });
+    if (!system) route(shared, items);
+  }
+  $("uploads").classList.remove("hidden");
+  drawUploads();
+  pump();
+}
+function sysTakes(s, name) { const ext = (name.match(/\.[^./]+$/) || [""])[0].toLowerCase(); return s.extensions.includes(ext) }
+
+async function route(group, items) {
+  try { await routeGroup(group, items) }
+  catch (e) { group.state = "choose"; group.choices = state.systems.map(s => s.name); group.why = e.message }
+  drawUploads();
+  pump();
+}
+async function routeGroup(group, items) {
+  {
+    // the folder's file that most consoles agree on: a .cue or .m3u beats a .bin
+    let best = null;
+    for (const it of items) {
+      const r = await api("GET", "/api/route?name=" + encodeURIComponent(it.file.name));
+      if (r.systems.length && (!best || r.systems.length < best.systems.length)) best = { it, systems: r.systems };
+    }
+    if (!best) { group.state = "choose"; group.choices = state.systems.map(s => s.name); group.why = "No console takes this file type"; return }
+    if (best.systems.length === 1) { group.system = best.systems[0]; group.state = "ready"; return }
+    // Several consoles take it: ask the scrape index by CRC32
+    group.state = "identifying";
+    drawUploads();
+    const crc = await crcOf(best.it.file);
+    if (crc) {
+      const r = await api("GET", "/api/route?name=" + encodeURIComponent(best.it.file.name) + "&crc=" + crc);
+      const hit = r.identified.filter(h => best.systems.includes(h.system));
+      if (hit.length === 1 || (hit.length > 1 && hit.every(h => h.system === hit[0].system))) {
+        group.system = hit[0].system; group.state = "ready"; group.identified = hit[0].game; return;
+      }
+      if (hit.length > 1) best.systems = [...new Set(hit.map(h => h.system))];
+    }
+    group.state = "choose";
+    group.choices = best.systems;
+    group.why = "Several consoles take " + (best.it.file.name.match(/\.[^.]+$/) || [""])[0] + " files";
+  }
+}
+
+// CRC32 of the game: a .zip's largest file from its central directory (no unzipping), else the whole file up to 64 MB.
+const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c } return t })();
+function crc32(buf, crc = 0) { crc = ~crc; for (let i = 0; i < buf.length; i++) crc = CRC_TABLE[(crc ^ buf[i]) & 255] ^ (crc >>> 8); return ~crc >>> 0 }
+const hex8 = n => n.toString(16).toUpperCase().padStart(8, "0");
+async function crcOf(file) {
+  try {
+    if (/\.zip$/i.test(file.name)) {
+      const tail = new Uint8Array(await file.slice(Math.max(0, file.size - 65557)).arrayBuffer());
+      const dv = new DataView(tail.buffer);
+      let eocd = -1;
+      for (let i = tail.length - 22; i >= 0; i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break }
+      if (eocd < 0) return null;
+      const cdSize = dv.getUint32(eocd + 12, true), cdOff = dv.getUint32(eocd + 16, true);
+      const cd = new DataView(await file.slice(cdOff, cdOff + cdSize).arrayBuffer());
+      let best = null;
+      for (let p = 0; p + 46 <= cd.byteLength && cd.getUint32(p, true) === 0x02014b50;) {
+        const crc = cd.getUint32(p + 16, true), size = cd.getUint32(p + 24, true);
+        const n = cd.getUint16(p + 28, true), x = cd.getUint16(p + 30, true), k = cd.getUint16(p + 32, true);
+        if (!best || size > best.size) best = { crc, size };
+        p += 46 + n + x + k;
+      }
+      return best ? hex8(best.crc) : null;
+    }
+    if (file.size > 64 << 20) return null;
+    let crc = 0;
+    for (let off = 0; off < file.size; off += 4 << 20) crc = crc32(new Uint8Array(await file.slice(off, off + (4 << 20)).arrayBuffer()), crc);
+    return hex8(crc);
+  } catch (e) { return null }
+}
+
+function drawUploads() {
+  const box = $("upList");
+  box.replaceChildren();
+  const active = uploads.filter(u => !u.done).length;
+  $("upTitle").textContent = active ? "Uploading " + active + (active === 1 ? " file" : " files") : "Uploads";
+  for (const u of uploads) {
+    const g = u.group, s = sysByName(g.system);
+    let where;
+    if (g.state === "choose" && !u.done) {
+      where = el("select", { onchange: e => { g.system = e.target.value; g.state = g.system ? "ready" : "choose"; drawUploads(); pump() } },
+                 el("option", { value: "" }, "Pick a console…"),
+                 ...g.choices.map(n => sysByName(n)).filter(x => x).map(x => el("option", { value: x.name }, x.fullname)));
+    } else where = el("span", {}, s ? "→ " + s.fullname : g.state === "identifying" ? "Recognising…" : "…");
+    const pct = u.file.size ? Math.floor(100 * u.sent / u.file.size) : (u.done ? 100 : 0);
+    const status = u.error ? el("span", { class: "bad" }, u.error) : el("span", {}, u.status || (g.state === "choose" ? g.why : ""));
+    const acts = [];
+    if (!u.done && !u.error) acts.push(el("button", { class: "small", onclick: () => cancelUpload(u) }, "Cancel"));
+    if (u.error && u.canReplace) acts.push(el("button", { class: "small", onclick: () => { u.error = ""; u.replace = true; u.canReplace = false; drawUploads(); pump() } }, "Replace"));
+    else if (u.error && !u.cancelled) acts.push(el("button", { class: "small", onclick: () => { u.error = ""; drawUploads(); pump() } }, "Retry"));
+    box.append(el("div", { class: "up" },
+      el("div", { class: "name" }, u.rel, g.identified ? el("span", { class: "faint" }, "  (" + g.identified + ")") : null),
+      el("div", { class: "line" }, where, el("span", {}, pct + "%")),
+      el("div", { class: "bar" }, el("i", { style: "width:" + pct + "%" })),
+      el("div", { class: "line" }, status, el("span", {}, ...acts))));
+  }
+}
+$("upClear").addEventListener("click", () => {
+  for (let i = uploads.length - 1; i >= 0; i--) if (uploads[i].done || uploads[i].cancelled) uploads.splice(i, 1);
+  if (!uploads.length) $("uploads").classList.add("hidden");
+  drawUploads();
+});
+function cancelUpload(u) {
+  u.cancelled = true;
+  u.error = "Cancelled";
+  if (u.xhr) u.xhr.abort();
+  const s = sysByName(u.group.system);
+  if (s) api("DELETE", "/api/upload?system=" + encodeURIComponent(s.name) + "&path=" + encodeURIComponent(u.rel)).catch(() => {});
+  drawUploads();
+}
+
+async function pump() {
+  if (uploading) return;
+  uploading = true;
+  try {
+    for (;;) {
+      const u = uploads.find(x => !x.done && !x.error && x.group.state === "ready");
+      if (!u) break;
+      await sendFile(u);
+      drawUploads();
+    }
+  } finally { uploading = false }
+  if (uploads.length && uploads.every(u => u.done || u.error)) { await loadSystems().catch(() => {}); pollTransfers(true) }
+}
+function putChunk(u, url, blob) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    u.xhr = x;
+    x.open("PUT", url);
+    x.setRequestHeader("Authorization", "Bearer " + state.token);
+    const base = u.sent;
+    x.upload.onprogress = e => { u.sent = base + e.loaded; drawProgress(u) };
+    x.onload = () => { let body = {}; try { body = JSON.parse(x.responseText) } catch (e) {} resolve({ status: x.status, body }) };
+    x.onerror = () => reject(new Error("The connection to the Thor dropped"));
+    x.onabort = () => reject(new Error("Cancelled"));
+    x.send(blob);
+  });
+}
+let lastDraw = 0;
+function drawProgress(u) { const now = Date.now(); if (now - lastDraw > 250) { lastDraw = now; drawUploads() } }
+async function sendFile(u) {
+  const s = sysByName(u.group.system);
+  const q = "/api/upload?system=" + encodeURIComponent(s.name) + "&path=" + encodeURIComponent(u.rel);
+  if (!sysTakes(s, u.file.name) && !u.rel.includes("/") && !u.forced) {
+    u.forced = true;
+    if (!await ask("Upload anyway?", s.fullname + " doesn't list " + u.file.name + "'s file type, so Asgard Home won't show it as a game.", "Upload")) {
+      u.error = "Not uploaded"; u.cancelled = true; return;
+    }
+  }
+  try {
+    const st = await api("GET", q);
+    if (st.exists && !u.replace) { u.error = "Already on the Thor"; u.canReplace = true; return }
+    u.sent = st.received;   // resume from what the Thor already has
+    let tries = 0;
+    const started = Date.now(), startedAt = u.sent;
+    while (u.sent < u.file.size || (u.file.size === 0 && !u.done)) {
+      if (u.cancelled) return;
+      const end = Math.min(u.sent + CHUNK, u.file.size);
+      const url = state.base + q + "&offset=" + u.sent + "&total=" + u.file.size + (scrapeAfter() ? "&scrape=1" : "") + (u.replace ? "&replace=1" : "");
+      let r;
+      try { r = await putChunk(u, url, u.file.slice(u.sent, end)) }
+      catch (e) {
+        if (u.cancelled) return;
+        if (++tries > 5) throw e;
+        u.status = "Reconnecting…"; drawUploads(); await sleep(2000 * tries);
+        u.sent = (await api("GET", q)).received; continue;
+      }
+      if (r.status === 409 && r.body.received !== undefined) { u.sent = r.body.received; continue }   // resume where the Thor is
+      if (r.status === 401) { lostPairing(); throw new Error("Not paired any more") }
+      if (r.status !== 200) { if (r.status === 409) u.canReplace = true; throw new Error(r.body.error || "HTTP " + r.status) }
+      tries = 0;
+      u.sent = r.body.received;
+      const secs = (Date.now() - started) / 1000, rate = (u.sent - startedAt) / Math.max(secs, .001);
+      u.status = mb(rate) + "/s" + (rate > 0 ? "  ·  " + Math.ceil((u.file.size - u.sent) / rate) + " s left" : "");
+      if (r.body.done) { u.done = true; u.status = scrapeAfter() ? "On the Thor · scraping queued" : "On the Thor"; break }
+    }
+  } catch (e) { if (!u.cancelled) u.error = e.message }
+  finally { u.xhr = null }
+}
+
+// files and folders, dropped or picked
+$("filePick").addEventListener("change", e => { addFiles([...e.target.files].map(f => ({ file: f, rel: f.name })), target()); e.target.value = "" });
+$("folderPick").addEventListener("change", e => {
+  const files = [...e.target.files].filter(f => !f.name.startsWith("."));
+  addFiles(files.map(f => ({ file: f, rel: f.webkitRelativePath.split("/").slice(-2).join("/") })), target());
+  e.target.value = "";
+});
+function target() { return state.sel !== "*" && sysByName(state.sel) ? state.sel : "" }
+let dragDepth = 0;
+document.addEventListener("dragenter", e => { if (state.token && e.dataTransfer.types.includes("Files")) { dragDepth++; document.body.classList.add("dragging") } });
+document.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dragging") } });
+document.addEventListener("dragover", e => e.preventDefault());
+document.addEventListener("drop", async e => {
+  e.preventDefault();
+  dragDepth = 0;
+  document.body.classList.remove("dragging");
+  if (!state.token || $("app").classList.contains("hidden")) return;
+  const items = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(x => x);
+  const out = [];
+  const walk = (entry, prefix, depth) => new Promise(resolve => {
+    if (entry.isFile) return entry.file(f => { if (!f.name.startsWith(".")) out.push({ file: f, rel: prefix + f.name }); resolve() }, () => resolve());
+    if (!entry.isDirectory || depth > 1) return resolve();
+    const reader = entry.createReader(), all = [];
+    const next = () => reader.readEntries(async batch => {
+      if (batch.length) { all.push(...batch); return next() }
+      for (const c of all) await walk(c, prefix + entry.name + "/", depth + 1);
+      resolve();
+    }, () => resolve());
+    next();
+  });
+  if (items.length) for (const it of items) await walk(it, "", 0);
+  else out.push(...[...e.dataTransfer.files].map(f => ({ file: f, rel: f.name })));
+  if (out.length) addFiles(out, target());
+});
+window.addEventListener("beforeunload", e => { if (uploads.some(u => !u.done && !u.error)) { e.preventDefault(); e.returnValue = "" } });
+
+// --- start --------------------------------------------------------------------------------------------------------------
+$("connectForm").addEventListener("submit", ev => { ev.preventDefault(); connect($("host").value) });
+(function start() {
+  const fromThor = location.protocol.startsWith("http") && location.port === String(PORT);
+  const last = fromThor ? location.host : localStorage.getItem("asgard.last") || "";
+  if (fromThor || last) connect(last);
+  else { show("connect"); $("host").focus() }
+})();
+</script>
+</body>
+</html>
