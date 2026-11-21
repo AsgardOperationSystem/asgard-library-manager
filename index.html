@@ -115,6 +115,8 @@ dialog .row { margin-top: 18px; justify-content: flex-end; }
     <div class="row"><input id="host" type="text" placeholder="Thor address, e.g. 192.168.1.30" autocomplete="off" spellcheck="false" required>
       <button class="primary" id="connectBtn">Connect</button></div>
     <div class="msg" id="connectMsg"></div>
+    <p class="faint hidden" id="hostedNote" style="font-size:.85em">From this website, Chrome and Edge ask once to reach devices
+      on your network: allow it. Firefox and Safari can't, so they open the Thor's own copy.</p>
   </form>
 </div>
 
@@ -192,6 +194,20 @@ function normHost(h) {
   return h;
 }
 
+// From an https:// page (GitHub Pages) the Thor's plain http:// is "mixed content". Chrome and Edge 142+ allow it for a
+// local-network address after asking the user once (Local Network Access): an IP literal or .local name on its own, any
+// other name only with fetch's targetAddressSpace. Firefox and Safari block it, so there the page sends you to the
+// Thor's own copy instead (a top-level http:// page is allowed).
+const HOSTED = location.protocol === "https:";
+const IP_LITERAL = h => /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || /^\[.*\]$/.test(h);
+const hostName = () => state.host.replace(/:\d+$/, "");
+function addressSpace() {
+  const h = hostName();
+  return /^(127\.|localhost$|\[::1\]$)/.test(h) ? "loopback" : "local";
+}
+const fetchOpts = () => HOSTED ? { targetAddressSpace: addressSpace() } : {};
+function thorCopy() { return "http://" + state.host + "/" }
+
 class ApiError extends Error { constructor(status, body) { super(body.error || "HTTP " + status); this.status = status; this.body = body } }
 async function api(method, path, body, opts = {}) {
   const headers = {};
@@ -200,7 +216,7 @@ async function api(method, path, body, opts = {}) {
   let r;
   try {
     r = await fetch(state.base + path, { method, headers, body: body === undefined ? undefined : body instanceof Blob ? body
-                                         : JSON.stringify(body), signal: opts.signal });
+                                         : JSON.stringify(body), signal: opts.signal, ...fetchOpts() });
   } catch (e) {
     if (e.name === "AbortError") throw e;
     throw new ApiError(0, { error: "Can't reach the Thor at " + state.host + ". Is it on, and on this network?" });
@@ -228,7 +244,18 @@ async function connect(host) {
     show("connect");
     $("host").value = host;
     $("connectMsg").className = "msg bad";
-    $("connectMsg").textContent = e.message;
+    $("connectMsg").replaceChildren(e.message);
+    if (HOSTED && e.status === 0) {
+      // Maybe the Thor is off, maybe this browser won't let an https:// page reach it: offer its own copy either way.
+      const chromium = !!navigator.userAgentData;
+      $("connectMsg").replaceChildren(
+        chromium ? "Can't reach the Thor at " + state.host + ". If the browser asked about devices on your local network, " +
+                   "allow it and try again; else check that the Thor is on and on this network."
+                 : "This browser doesn't let a page on the web reach devices on your network. Open the Thor's own copy " +
+                   "instead (the Thor must be on and on this network):",
+        el("div", { style: "margin-top:10px" }, el("a", { href: thorCopy(), id: "thorCopy", class: "chip", style: "text-decoration:none;color:var(--text)" },
+                                                    "Open " + thorCopy())));
+    }
     return;
   }
   $("connectMsg").textContent = "";
@@ -677,6 +704,9 @@ async function pump() {
   if (uploads.length && uploads.every(u => u.done || u.error)) { await loadSystems().catch(() => {}); pollTransfers(true) }
 }
 function putChunk(u, url, blob) {
+  // XMLHttpRequest shows progress within a chunk but has no targetAddressSpace: from an https:// page a Thor addressed by
+  // name goes through fetch, with progress per chunk.
+  if (HOSTED && !IP_LITERAL(hostName()) && !/\.local$/.test(hostName())) return putChunkFetch(u, url, blob);
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest();
     u.xhr = x;
@@ -689,6 +719,17 @@ function putChunk(u, url, blob) {
     x.onabort = () => reject(new Error("Cancelled"));
     x.send(blob);
   });
+}
+async function putChunkFetch(u, url, blob) {
+  const ctrl = new AbortController();
+  u.xhr = { abort: () => ctrl.abort() };
+  try {
+    const r = await fetch(url, { method: "PUT", body: blob, headers: { Authorization: "Bearer " + state.token },
+                                 signal: ctrl.signal, ...fetchOpts() });
+    return { status: r.status, body: await r.json().catch(() => ({})) };
+  } catch (e) {
+    throw new Error(e.name === "AbortError" ? "Cancelled" : "The connection to the Thor dropped");
+  }
 }
 let lastDraw = 0;
 function drawProgress(u) { const now = Date.now(); if (now - lastDraw > 250) { lastDraw = now; drawUploads() } }
@@ -773,6 +814,7 @@ $("connectForm").addEventListener("submit", ev => { ev.preventDefault(); connect
 (function start() {
   const fromThor = location.protocol.startsWith("http") && location.port === String(PORT);
   const last = fromThor ? location.host : localStorage.getItem("asgard.last") || "";
+  if (HOSTED) $("hostedNote").classList.remove("hidden");
   if (fromThor || last) connect(last);
   else { show("connect"); $("host").focus() }
 })();

@@ -131,6 +131,39 @@ def wait(cond, what, secs=15):
         time.sleep(0.1)
 
 
+def lan_ip():
+    """This machine's address on its network (no packet is sent), or None."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        s.close()
+    return None if ip.startswith("127.") else ip
+
+
+def serve_https():
+    """index.html over https on 127.0.0.1, as GitHub Pages would serve it, with a self-signed certificate."""
+    import http.server
+    import ssl
+    import functools
+    key, cert = f"{RUN}/key.pem", f"{RUN}/cert.pem"
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=127.0.0.1",
+                    "-keyout", key, "-out", cert], check=True, capture_output=True)
+    class Quiet(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+    handler = functools.partial(Quiet, directory=REPO)
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(cert, key)
+    srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv.server_address[1]
+
+
 # --- WebDriver, the few calls this needs -----------------------------------------------------------------------------------
 def wd(method, path, body=None):
     req = urllib.request.Request(f"http://127.0.0.1:{WD_PORT}{path}", method=method,
@@ -273,6 +306,27 @@ try:
         raise AssertionError("the token still works after unpairing")
     except urllib.error.HTTPError as e:
         assert e.code == 401
+
+    # From an https:// copy (GitHub Pages), Firefox may not reach a Thor on the LAN over http://: the page says so and
+    # links to the Thor's own copy. The page is served here over https with a throwaway certificate, and the service is
+    # addressed by this machine's LAN address (127.0.0.1 counts as secure, so it wouldn't be blocked).
+    lan = lan_ip()
+    if not lan:
+        print("SKIP: hosted mode: this machine has no LAN address")
+    else:
+        https_port = serve_https()
+        wd("DELETE", S)
+        S = "/session/" + wd("POST", "/session", {"capabilities": {"alwaysMatch": {"acceptInsecureCerts": True,
+                                "moz:firefoxOptions": {"args": ["-headless"]}}}})["sessionId"]
+        wd("POST", f"{S}/url", {"url": f"https://127.0.0.1:{https_port}/index.html"})
+        wait(lambda: visible("#host") and visible("#hostedNote"), lambda: "the hosted page: " + str(js("return location.href + ' ' + document.title + ' ' + [...document.querySelectorAll('#connect,#pair,#app,#hostedNote')].map(e => e.id + '=' + e.className).join(' ') + ' last=' + localStorage.getItem('asgard.last')")))
+        typed("#host", f"{lan}:{PORT}")
+        click("#connectBtn")
+        wait(lambda: js("const a = document.getElementById('thorCopy'); return a && a.href") == f"http://{lan}:{PORT}/",
+             lambda: "the link to the Thor's own copy: " + str(text("#connectMsg")))
+        shot("library-manager-hosted-fallback")
+        click("#thorCopy")
+        wait(lambda: js("return location.href") == f"http://{lan}:{PORT}/" and visible("#host"), "the Thor's own copy")
     print("ok")
 finally:
     try:

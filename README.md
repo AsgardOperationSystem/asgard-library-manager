@@ -18,12 +18,20 @@ How to use it, step by step: **[the wiki's Library Manager page](https://github.
 ## How it works
 
 The web app is one file, `index.html`: no build step, no framework, and nothing loaded from the internet. It talks to
-`asgard-library.py`, a small service on the Thor (port **8467**), which serves this page too. Open
-`http://<the Thor's address>:8467` in a browser. The Thor shows its address under **Settings → Hardware → Network →
-Library Manager**.
+`asgard-library.py`, a small service on the Thor (port **8467**). The same file runs in three places:
 
-You can also open `index.html` from your own computer and type the Thor's address. A copy on a website can't work:
-browsers block an `https://` page from talking to a device on your network over plain `http://`.
+| Where | How | Browsers |
+|---|---|---|
+| **This repository's site**, [asgardoperationsystem.github.io/asgard-library-manager](https://asgardoperationsystem.github.io/asgard-library-manager/) | Type the Thor's address | Chrome and Edge 142 or later: they ask once to reach devices on your local network; allow it. Firefox and Safari don't allow it, so the page offers a link to the Thor's own copy |
+| **The Thor's own copy**, `http://<the Thor's address>:8467` | Nothing to type | Every browser |
+| **Downloaded**, `index.html` opened from your computer | Type the Thor's address | Every browser |
+
+The Thor shows its address under **Settings → Hardware → Network → Library Manager**.
+
+Why the website needs that permission: GitHub Pages serves `https://`, and the Thor answers plain `http://` on your
+network, which browsers otherwise block as mixed content. Chrome's
+[Local Network Access](https://developer.chrome.com/blog/local-network-access) lets it through after asking the user. The
+Thor can't serve `https://` itself: no certificate authority issues one for an address on a home network.
 
 ### Pairing
 
@@ -70,10 +78,12 @@ JSON over HTTP on port 8467. Send `Authorization: Bearer <token>` with every req
 ## Testing
 
 `test/test_webapp.py` runs the page against the Thor's real service on a fake root, with no Thor, in headless Firefox
-through geckodriver. It uses Python's standard library only.
+through geckodriver. It uses Python's standard library only. It also serves the page over `https://` with a throwaway
+certificate, as GitHub Pages would, and checks that Firefox, which blocks the Thor's `http://` from there, gets the link to
+the Thor's own copy. The Chrome path from the website needs a person: it asks for permission.
 
 ```sh
-ASGARDOS=../asgardos python3 -I test/test_webapp.py        # needs firefox and geckodriver
+ASGARDOS=../asgardos python3 -I test/test_webapp.py        # needs firefox, geckodriver and openssl
 SHOTS=test/shots ASGARDOS=../asgardos python3 -I test/test_webapp.py   # also saves a screenshot of each step
 ```
 
